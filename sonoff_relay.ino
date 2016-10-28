@@ -1,14 +1,14 @@
 /*
    1MB flash size
 
-   sonoff header
+   Sonoff Relay serial header
    1 - vcc 3v3
    2 - rx
    3 - tx
    4 - gnd
    5 - gpio 14
 
-   esp8266 connections
+   ESP8266 pin connections on relay board
    gpio  0 - button
    gpio 12 - relay (Operates from 12v off line power, not programmer power.)
    gpio 13 - green led - active low
@@ -17,7 +17,6 @@
 */
 
 boolean debug = false;  //  true; // Set true for serial debug output
-
 
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
@@ -36,6 +35,7 @@ char subTopic[] = "openhab/xmaslgts/relay";   // Topic to control this light
 char thisLightOn[25];
 char thisLightOff[25];
 char checkin[35];
+void callback(char* topic, byte* payload, unsigned int length);
 void toggle(void);
 volatile byte state = LOW;
 byte lastState = LOW;
@@ -53,39 +53,12 @@ char message_buff[100];   // Message buffer for the relay command
 WiFiClient wlClient;
 PubSubClient client(MQTT_SERVER, 1883, callback, wlClient);
 
-/*********************** Connect to MQTT server ***********************/
-void mqtt_connect(){
-    // Loop until we're reconnected
 
-         if (debug) { Serial.print("Length thisLight: "); Serial.println(strlen(thisLight));
-         Serial.print("Length checking in:"); Serial.println(strlen(" checking in!\0"));
-         Serial.print("Length thisLight + checking in:"); Serial.println(strlen(" checking in!\0") + strlen(thisLight));
-         Serial.print("Length checkin:"); Serial.println(strlen(checkin));
-         Serial.print("checkin = "); Serial.println(checkin); } 
-    
-  while (!client.connected()) {
-     if (debug) { Serial.print("Attempting MQTT connection..."); }
-//     Attempt to connect
-     if (client.connect(thisLight)) {   
-      if (debug) { Serial.println("connected"); }
-      // Once connected, publish an announcement...
-//        client.publish(pubTopic,"Relay checking in!\0");
-         client.publish(pubTopic,checkin);
-         client.subscribe(subTopic);      
-    } else {
-      if (debug) { Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds"); }
-      // Wait 5 seconds before retrying
-      delay(5000);
-    }
-  }
-}
-
-
+/***************** Setup function *************************/
 void setup() {
   if (debug) { delay(1000); Serial.begin(115200); } //start serial commms for debugging 
-  
+
+  // Variables for various messages and functions
   strcat(thisLightOn, thisLight);    // Set up string for specific light on
   strcat(thisLightOn, "On");
 
@@ -95,9 +68,10 @@ void setup() {
   strcat(checkin, thisLight);        // Set up string for check-in message
   strcat(checkin, " checking in!");
 
-if (debug) { Serial.println(); Serial.println(); 
-   Serial.println(thisLightOn); Serial.println(thisLightOff); }
+      if (debug) { Serial.println(); Serial.println(); 
+        Serial.println(thisLightOn); Serial.println(thisLightOff); }
 
+  // Set up pins for relay, LED and button
   pinMode(relayPin, OUTPUT);
   pinMode(LEDpin, OUTPUT);
   pinMode(buttonPin, INPUT);
@@ -107,25 +81,27 @@ if (debug) { Serial.println(); Serial.println();
   digitalWrite(LEDpin, LOW);    // LED is ON
   
 // Connect to WiFi access point.
-  if (debug) { Serial.println(); Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(WLAN_SSID); }
+      if (debug) { Serial.println(); Serial.println();
+        Serial.print("Connecting to ");
+        Serial.println(WLAN_SSID); }
   WiFi.begin(WLAN_SSID, WLAN_PASS);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    if (debug) { Serial.print("."); }
+      if (debug) { Serial.print("."); }
   }
-  if (debug) { Serial.println();
-  Serial.println("WiFi connected");
-  Serial.println("IP address: "); Serial.println(WiFi.localIP()); }
+      if (debug) { Serial.println();
+        Serial.println("WiFi connected");
+        Serial.println("IP address: "); Serial.println(WiFi.localIP()); }
   mqtt_connect();
-  if (debug) { Serial.print(thisLight); Serial.println(F(" Relay Ready!")); }  
- 
+      if (debug) { Serial.print(thisLight); Serial.println(F(" Relay Ready!")); }  
+
+  // Attach interrupt to pin 0 to check for button press
   attachInterrupt(digitalPinToInterrupt(buttonPin), toggle, FALLING);
 } // End setup()
 
-void loop()
-{
+
+/************** Main loop function *****************/
+void loop() {
   
 // Reconnect of connection lost.
    if (!client.connected()) {
@@ -144,16 +120,13 @@ void loop()
     }
   lastState = state;
   }
+  
+ // Handle MQTT work
+  client.loop();
+} // End main loop()
 
 
- client.loop();
-} // End loop()
-
-
-
-
-
-
+/****************** MQTT callback to handle incoming messages ******************/
 void callback(char* topic, byte* payload, unsigned int length) {
   // MQTT inbound Messaging 
   int i = 0;
@@ -164,7 +137,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   String msgString = String(message_buff);
   if (debug) { Serial.println("Inbound: " + String(topic) +":"+ msgString); }
   
-  //Activate relay
+  //Activate relay on or off based on message received
   if ( msgString == "LightsOn" || msgString == thisLightOn ) {
      digitalWrite(relayPin,HIGH);
      digitalWrite(LEDpin,LOW);
@@ -175,12 +148,40 @@ void callback(char* topic, byte* payload, unsigned int length) {
      digitalWrite(LEDpin,HIGH);
      client.publish(pubTopic,thisLightOff);
     }
+}
+
+
+/*********************** Connect to MQTT server ***********************/
+void mqtt_connect(){
+    // Loop until we're reconnected
+
+      if (debug) { Serial.print("Length thisLight: "); Serial.println(strlen(thisLight));
+         Serial.print("Length checking in:"); Serial.println(strlen(" checking in!\0"));
+         Serial.print("Length thisLight + checking in:"); Serial.println(strlen(" checking in!\0") + strlen(thisLight));
+         Serial.print("Length checkin:"); Serial.println(strlen(checkin));
+         Serial.print("checkin = "); Serial.println(checkin); } 
     
+  while (!client.connected()) {
+      if (debug) { Serial.print("Attempting MQTT connection..."); }
+     // Attempt to connect
+    if (client.connect(thisLight)) {   
+      if (debug) { Serial.println("connected"); }
+      // Once connected, publish an announcement...
+      client.publish(pubTopic,checkin);
+      client.subscribe(subTopic);      
+    } else {
+      if (debug) { Serial.print("failed, rc=");
+        Serial.print(client.state());
+        Serial.println(" try again in 5 seconds"); }
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
   }
+}
 
 
-
-void toggle(){
+/**************** Interrupt service function on button press **************/
+void toggle(void){
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
   
@@ -191,10 +192,3 @@ void toggle(){
   last_interrupt_time = interrupt_time;
 }
 
-
-/* 
-void toggle(){
- state = !state; 
-}
-
-*/
