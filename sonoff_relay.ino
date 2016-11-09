@@ -24,8 +24,8 @@ boolean debug = false;  //  true; // Set true for serial debug output
 
 /************************* Relay Node Configuration ***************************/
 
-#define WLAN_SSID       "Base"                  // WiFi ssid to connect
-#define WLAN_PASS       "124winterviewlizard"   // WiFi password
+#define WLAN_SSID       "xxxxxxxx"                  // WiFi ssid to connect
+#define WLAN_PASS       "xxxxxxxxxxxxxxxxxxxxxxx"   // WiFi password
 
 char thisLight[] = "frogFrontWindow";          // Light to be controlled
 
